@@ -28,7 +28,7 @@ This is a **property of the PaySim simulation and a project modeling-scope decis
 
 ## Baseline Modeling Approach
 
-Task 2 builds a deliberately conservative leakage-safe baseline:
+Task 2 builds a deliberately conservative leakage-safe baseline (Model A):
 
 - **Predictors:** `type`, `amount`, `oldbalanceOrg` only
 - **Target:** `isFraud`
@@ -37,6 +37,22 @@ Task 2 builds a deliberately conservative leakage-safe baseline:
 - **Evaluation:** PR-AUC / Average Precision, ROC-AUC, precision, recall, F1; provisional threshold chosen on validation only
 
 IDs, post-transaction balances, destination pre-balance, and `isFlaggedFraud` are excluded.
+
+## Feature Engineering and Model Comparison
+
+Task 3 asks whether false positives can be reduced while holding approximately **80% fraud recall**. It compares three configurations under the same temporal protocol and validation-only operating policy (highest precision subject to recall ≥ 80%):
+
+| Model | Description |
+| --- | --- |
+| **A** | Frozen Task 2 Logistic Regression baseline (`type`, `amount`, `oldbalanceOrg`) |
+| **B** | Logistic Regression on baseline features plus small leakage-safe engineered features (`log_amount`, `log_origin_balance`, `amount_to_balance_ratio`, `origin_balance_zero`, `amount_exceeds_balance`) |
+| **C** | XGBoost on the same engineered feature set, with `scale_pos_weight` from the **train** split only |
+
+Primary operational comparison: **false positives at approximately 80% recall** (not accuracy or ROC-AUC maximization). XGBoost scores are used for ranking/thresholding and are **not** treated as calibrated probabilities.
+
+### PaySim limitation (Task 3A)
+
+PaySim is **synthetic** and implements a specific account-takeover scenario in which fraudsters often drain the victim’s balance. Engineered features such as `amount_to_balance_ratio` and `amount_exceeds_balance` can align strongly with that label-generation mechanism. Very strong Task 3 scores are therefore treated as a **simulator artifact / synthetic shortcut** risk—not as temporal leakage, and not as proof the same features will generalize to real-world fraud. See `notebooks/03a_simulator_artifact_audit.ipynb` for the pattern audit and feature ablation. This is an example of why diagnostics and domain understanding matter before treating a high leaderboard score as a deployment decision.
 
 ## Project Principles
 
@@ -59,16 +75,22 @@ fraud-risk-api/
 │   └── raw/                 # place PaySim CSV here (not in Git)
 ├── notebooks/
 │   ├── 01_data_audit.ipynb
-│   └── 02_logistic_baseline.ipynb
+│   ├── 02_logistic_baseline.ipynb
+│   ├── 03_feature_engineering_xgboost.ipynb
+│   └── 03a_simulator_artifact_audit.ipynb
 ├── src/
 │   └── fraud_risk/
 │       ├── __init__.py
 │       ├── data.py
 │       ├── dataset.py
+│       ├── diagnostics.py
+│       ├── features.py
 │       └── modeling.py
 ├── tests/
 │   ├── test_data.py
-│   └── test_dataset.py
+│   ├── test_dataset.py
+│   ├── test_diagnostics.py
+│   └── test_features.py
 └── docs/
     └── feature_contract.md
 ```
@@ -90,6 +112,8 @@ pip install -e ".[dev]"
 3. Open and run:
    - `notebooks/01_data_audit.ipynb` — exploratory audit
    - `notebooks/02_logistic_baseline.ipynb` — leakage-safe logistic baseline
+   - `notebooks/03_feature_engineering_xgboost.ipynb` — engineered features + XGBoost comparison
+   - `notebooks/03a_simulator_artifact_audit.ipynb` — PaySim drain-pattern audit + feature ablation
 
 Notebooks import reusable helpers from `fraud_risk`; they do not reimplement core data or modeling logic.
 
@@ -106,6 +130,10 @@ Tests use synthetic CSVs / DataFrames and do not require the Kaggle dataset.
 
 **Task 1 — Data audit and feature contract.** Complete.
 
-**Task 2 — Modeling dataset and Logistic Regression baseline.** Complete.
+**Task 2 — Modeling dataset and Logistic Regression baseline.** Complete. Model A remains the fixed baseline.
 
-No FastAPI service, Docker image, CI/CD pipeline, AWS deployment, XGBoost model, or production monitoring exists yet.
+**Task 3 — Leakage-safe feature engineering and XGBoost comparison.** Complete. Engineered Logistic Regression (Model B) and XGBoost (Model C) are compared against Model A on false positives at approximately 80% recall.
+
+**Task 3A — Simulator artifact and feature ablation audit.** Complete. Quantifies PaySim account-drain alignment and ablates explicit balance-drain features before treating near-perfect scores as deployment-ready.
+
+No FastAPI service, Docker image, CI/CD pipeline, AWS deployment, probability calibration, or production monitoring exists yet.
