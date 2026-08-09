@@ -26,6 +26,18 @@ The PaySim audit found all labeled fraud in those two types (`PAYMENT`, `CASH_IN
 
 This is a **property of the PaySim simulation and a project modeling-scope decision**. It does **not** mean those other types can never be fraudulent in real financial systems.
 
+## Baseline Modeling Approach
+
+Task 2 builds a deliberately conservative leakage-safe baseline:
+
+- **Predictors:** `type`, `amount`, `oldbalanceOrg` only
+- **Target:** `isFraud`
+- **Temporal key:** `step` for chronological train / validation / test splits (~70% / 15% / 15% of rows via cumulative step counts; not used as a predictor)
+- **Model:** scikit-learn Logistic Regression with one-hot encoding, numeric standardization, and balanced class weights
+- **Evaluation:** PR-AUC / Average Precision, ROC-AUC, precision, recall, F1; provisional threshold chosen on validation only
+
+IDs, post-transaction balances, destination pre-balance, and `isFlaggedFraud` are excluded.
+
 ## Project Principles
 
 - Prevent target leakage
@@ -46,13 +58,17 @@ fraud-risk-api/
 │   ├── README.md
 │   └── raw/                 # place PaySim CSV here (not in Git)
 ├── notebooks/
-│   └── 01_data_audit.ipynb
+│   ├── 01_data_audit.ipynb
+│   └── 02_logistic_baseline.ipynb
 ├── src/
 │   └── fraud_risk/
 │       ├── __init__.py
-│       └── data.py
+│       ├── data.py
+│       ├── dataset.py
+│       └── modeling.py
 ├── tests/
-│   └── test_data.py
+│   ├── test_data.py
+│   └── test_dataset.py
 └── docs/
     └── feature_contract.md
 ```
@@ -67,13 +83,15 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 ```
 
-## Running the Data Audit Notebook
+## Running Notebooks
 
 1. Place the PaySim CSV in `data/raw/` (exactly one `.csv` file).
 2. Register the project kernel if needed: `python -m ipykernel install --user --name=fraud-risk-api`
-3. Open and run `notebooks/01_data_audit.ipynb`.
+3. Open and run:
+   - `notebooks/01_data_audit.ipynb` — exploratory audit
+   - `notebooks/02_logistic_baseline.ipynb` — leakage-safe logistic baseline
 
-The notebook imports `load_raw_data` from `fraud_risk.data`; it does not reimplement CSV discovery.
+Notebooks import reusable helpers from `fraud_risk`; they do not reimplement core data or modeling logic.
 
 ## Tests
 
@@ -82,10 +100,12 @@ pytest
 ruff check .
 ```
 
-Tests use synthetic CSVs and do not require the Kaggle dataset.
+Tests use synthetic CSVs / DataFrames and do not require the Kaggle dataset.
 
 ## Current Status
 
-**Task 1 — Data audit and feature contract.**
+**Task 1 — Data audit and feature contract.** Complete.
 
-No trained model, FastAPI service, Docker image, CI/CD pipeline, or AWS deployment exists yet.
+**Task 2 — Modeling dataset and Logistic Regression baseline.** Complete.
+
+No FastAPI service, Docker image, CI/CD pipeline, AWS deployment, XGBoost model, or production monitoring exists yet.
