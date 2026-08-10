@@ -1,0 +1,37 @@
+# VCS and local environments
+.git
+.venv
+venv
+.env
+.env.*
+
+# Python / tool caches
+**/__pycache__
+*.py[cod]
+*$py.class
+*.egg-info
+.eggs
+dist
+build
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.ipynb_checkpoints
+.coverage
+htmlcov
+
+# OS / IDE
+.DS_Store
+.idea
+.vscode
+
+# Training data and notebooks (not required for serving)
+data
+notebooks
+**/*.ipynb
+
+# Tests are not installed into the runtime image
+tests
+
+# Keep artifacts/xgb-transformed-v1/ in the build context (do not exclude it).
+# PaySim CSVs live under data/ and are excluded above.

@@ -15,8 +15,6 @@ dependencies = [
     "scikit-learn",
     "xgboost",
     "joblib",
-    "jupyter",
-    "ipykernel",
     "fastapi",
     "uvicorn",
 ]
@@ -26,6 +24,8 @@ dev = [
     "pytest",
     "ruff",
     "httpx",
+    "jupyter",
+    "ipykernel",
 ]
 
 [tool.setuptools.packages.find]

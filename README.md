@@ -69,7 +69,12 @@ PaySim is **synthetic** and implements a specific account-takeover scenario in w
 fraud-risk-api/
 ├── README.md
 ├── pyproject.toml
+├── Dockerfile
+├── .dockerignore
 ├── .gitignore
+├── .github/
+│   └── workflows/
+│       └── ci.yml
 ├── data/
 │   ├── README.md
 │   └── raw/                 # place PaySim CSV here (not in Git)
@@ -81,6 +86,8 @@ fraud-risk-api/
 │   ├── 03_feature_engineering_xgboost.ipynb
 │   ├── 03a_simulator_artifact_audit.ipynb
 │   └── 04_probability_calibration.ipynb
+├── scripts/
+│   └── create_ci_smoke_artifact.py
 ├── src/
 │   └── fraud_risk/
 │       ├── __init__.py
@@ -99,9 +106,11 @@ fraud-risk-api/
 ├── tests/
 │   ├── test_api.py
 │   ├── test_calibration.py
+│   ├── test_ci_smoke_artifact.py
 │   ├── test_data.py
 │   ├── test_dataset.py
 │   ├── test_diagnostics.py
+│   ├── test_docker.py
 │   ├── test_features.py
 │   └── test_inference.py
 └── docs/
@@ -196,6 +205,57 @@ With the real local artifact (not required by the automated test suite):
 4. `POST /predict` for one `TRANSFER` and one `CASH_OUT`
 5. Confirm `/docs` loads
 
+## Docker
+
+Package the frozen FastAPI service into a self-contained Linux image. The image includes the Python runtime, project dependencies, and a copy of the local `xgb-transformed-v1` artifact. PaySim, notebooks, and host virtualenvs are not required at container runtime.
+
+The frozen artifact is **copied into the image during a local Docker build** but remains **excluded from Git**. Generate it on the host before building.
+
+### 1. Prerequisite artifact
+
+```bash
+python -m fraud_risk.train_final
+```
+
+Confirm `artifacts/xgb-transformed-v1/{model.joblib,calibrator.joblib,metadata.json}` exist.
+
+### 2. Build
+
+```bash
+docker build -t fraud-risk-api:local .
+```
+
+### 3. Run
+
+```bash
+docker run --rm --name fraud-risk-api -p 8000:8000 fraud-risk-api:local
+```
+
+No volume mounts are needed: the model is already inside the image.
+
+### 4. Health check
+
+`GET http://127.0.0.1:8000/health` should return `{"status":"ok","model_loaded":true}`. Docker also runs a built-in `HEALTHCHECK` against the same endpoint.
+
+### 5. Swagger
+
+Interactive docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+### 6. Stop
+
+```bash
+docker stop fraud-risk-api
+```
+
+## Continuous Integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on pull requests, pushes to `main`, and manual workflow dispatch.
+
+1. **python-quality** — `ruff check .` then `pytest` on Python 3.13.
+2. **docker-smoke** — after quality passes, builds the Docker image and hits `/health`, `/model/info`, and one `/predict`.
+
+CI does **not** use PaySim or the real portfolio binary. It generates a synthetic compatible package via `scripts/create_ci_smoke_artifact.py` (`model_version = ci-smoke-v1`) only to exercise the serving path. CI never evaluates model performance.
+
 ## Tests
 
 ```bash
@@ -221,4 +281,8 @@ Tests use synthetic CSVs / DataFrames (and a fake predictor for the API) and do 
 
 **Task 6 — FastAPI local model service.** Complete. Minimal local API (`/health`, `/model/info`, `/predict`) loads `FraudPredictor` once at startup and reuses it across requests.
 
-No Docker image, CI/CD pipeline, AWS deployment, authentication, or production monitoring exists yet.
+**Task 7 — Dockerize the Fraud API.** Complete. A two-stage `Dockerfile` packages the runtime dependencies and frozen `xgb-transformed-v1` artifact into a non-root Linux image that serves the existing FastAPI app on port 8000.
+
+**Task 8 — GitHub Actions Continuous Integration.** Complete. CI runs lint/tests, then a Docker serving smoke test using a synthetic `ci-smoke-v1` artifact (PaySim and the real model binary stay out of Git and out of CI).
+
+No AWS deployment, authentication, or production monitoring exists yet.

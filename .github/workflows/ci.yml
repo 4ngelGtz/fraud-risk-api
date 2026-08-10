@@ -1,0 +1,152 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-quality:
+    name: python-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install project with dev extras
+        run: pip install -e ".[dev]"
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Pytest
+        run: pytest
+
+  docker-smoke:
+    name: docker-smoke
+    needs: python-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install runtime dependencies for CI smoke artifact
+        run: pip install -e .
+
+      - name: Create CI smoke artifact
+        run: python scripts/create_ci_smoke_artifact.py
+
+      - name: Confirm CI smoke artifact files
+        run: |
+          test -f artifacts/xgb-transformed-v1/model.joblib
+          test -f artifacts/xgb-transformed-v1/calibrator.joblib
+          test -f artifacts/xgb-transformed-v1/metadata.json
+          python -c "
+          import json
+          from pathlib import Path
+          meta = json.loads(Path('artifacts/xgb-transformed-v1/metadata.json').read_text())
+          assert meta['model_version'] == 'ci-smoke-v1', meta
+          print('CI smoke metadata model_version=', meta['model_version'])
+          "
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (load locally, do not push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: fraud-risk-api:ci
+
+      - name: Run container
+        run: docker run -d --name fraud-risk-api-ci -p 8000:8000 fraud-risk-api:ci
+
+      - name: Health wait and HTTP smoke assertions
+        run: |
+          python <<'PY'
+          import json
+          import sys
+          import time
+          import urllib.error
+          import urllib.request
+
+          health_url = "http://127.0.0.1:8000/health"
+          deadline = time.time() + 60
+          last_error = None
+          while time.time() < deadline:
+              try:
+                  with urllib.request.urlopen(health_url, timeout=2) as resp:
+                      if resp.status == 200:
+                          payload = json.loads(resp.read().decode())
+                          if payload.get("status") == "ok" and payload.get("model_loaded") is True:
+                              print("health ok:", payload)
+                              break
+                          last_error = f"unexpected health payload: {payload}"
+                      else:
+                          last_error = f"health HTTP {resp.status}"
+              except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+                  last_error = str(exc)
+              time.sleep(2)
+          else:
+              print("ERROR: /health never became ready:", last_error, file=sys.stderr)
+              sys.exit(1)
+
+          with urllib.request.urlopen("http://127.0.0.1:8000/model/info", timeout=5) as resp:
+              assert resp.status == 200
+              info = json.loads(resp.read().decode())
+          print("model/info:", info)
+          assert info["model_version"] == "ci-smoke-v1", info
+
+          body = json.dumps(
+              {
+                  "transaction_type": "TRANSFER",
+                  "amount": 1000.0,
+                  "origin_balance": 5000.0,
+              }
+          ).encode()
+          req = urllib.request.Request(
+              "http://127.0.0.1:8000/predict",
+              data=body,
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          with urllib.request.urlopen(req, timeout=10) as resp:
+              assert resp.status == 200
+              pred = json.loads(resp.read().decode())
+          print("predict:", pred)
+          assert "fraud_probability" in pred
+          proba = float(pred["fraud_probability"])
+          assert 0.0 <= proba <= 1.0
+          assert pred["decision"] in {"pass", "review"}
+          assert "threshold" in pred
+          assert pred["model_version"] == "ci-smoke-v1"
+          print("docker-smoke assertions passed")
+          PY
+
+      - name: Container logs and cleanup
+        if: always()
+        run: |
+          docker logs fraud-risk-api-ci || true
+          docker rm -f fraud-risk-api-ci || true

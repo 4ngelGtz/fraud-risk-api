@@ -1,24 +1,34 @@
 # Artifacts
 
-Local, versioned model packages produced by:
-
-```bash
-python -m fraud_risk.train_final
-```
+Local, versioned model packages produced by training or CI helpers.
 
 ## Layout
 
 ```text
 artifacts/
-└── xgb-transformed-v1/
-    ├── model.joblib       # fitted XGB Transformed preprocessing + classifier
-    ├── calibrator.joblib  # fitted Platt (sigmoid) calibrator
-    └── metadata.json      # version, threshold, features, temporal ranges, library versions
+└── xgb-transformed-v1/      # path expected by Docker / FRAUD_MODEL_DIR
+    ├── model.joblib
+    ├── calibrator.joblib
+    └── metadata.json
 ```
+
+The on-disk directory name for Docker is always `xgb-transformed-v1/`. Which package lives there depends on how it was generated:
+
+| Package | How created | `metadata.model_version` | Purpose |
+| --- | --- | --- | --- |
+| **Real portfolio model** | `python -m fraud_risk.train_final` (needs PaySim under `data/raw/`) | `xgb-transformed-v1` | Local deployment / evaluation |
+| **CI smoke package** | `python scripts/create_ci_smoke_artifact.py` | `ci-smoke-v1` | Ephemeral serving-contract smoke tests on CI runners only |
+
+`ci-smoke-v1` is **not** a fraud model. It must never be used for evaluation or deployment. It exists only so CI can build and start the API without PaySim or the real binary.
 
 ## Git policy
 
-Generated binary artifacts (`*.joblib`) and `metadata.json` are **not committed**. Only this README is tracked. Rebuild locally after clone with `python -m fraud_risk.train_final` (requires the PaySim CSV under `data/raw/`).
+Generated binary artifacts (`*.joblib`) and `metadata.json` are **not committed**. Only this README is tracked.
+
+- Rebuild the real package locally: `python -m fraud_risk.train_final`
+- CI regenerates the synthetic smoke package on the runner before `docker build`; those binaries are never pushed to Git
+
+For Docker, whichever package is present under `artifacts/xgb-transformed-v1/` is copied into the image at build time.
 
 ## Frozen portfolio model
 
