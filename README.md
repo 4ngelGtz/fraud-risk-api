@@ -77,22 +77,26 @@ fraud-risk-api/
 │   ├── 01_data_audit.ipynb
 │   ├── 02_logistic_baseline.ipynb
 │   ├── 03_feature_engineering_xgboost.ipynb
-│   └── 03a_simulator_artifact_audit.ipynb
+│   ├── 03a_simulator_artifact_audit.ipynb
+│   └── 04_probability_calibration.ipynb
 ├── src/
 │   └── fraud_risk/
 │       ├── __init__.py
+│       ├── calibration.py
 │       ├── data.py
 │       ├── dataset.py
 │       ├── diagnostics.py
 │       ├── features.py
 │       └── modeling.py
 ├── tests/
+│   ├── test_calibration.py
 │   ├── test_data.py
 │   ├── test_dataset.py
 │   ├── test_diagnostics.py
 │   └── test_features.py
 └── docs/
-    └── feature_contract.md
+    ├── feature_contract.md
+    └── inference_contract.md
 ```
 
 ## Local Setup
@@ -114,6 +118,7 @@ pip install -e ".[dev]"
    - `notebooks/02_logistic_baseline.ipynb` — leakage-safe logistic baseline
    - `notebooks/03_feature_engineering_xgboost.ipynb` — engineered features + XGBoost comparison
    - `notebooks/03a_simulator_artifact_audit.ipynb` — PaySim drain-pattern audit + feature ablation
+   - `notebooks/04_probability_calibration.ipynb` — Platt calibration + inference contract
 
 Notebooks import reusable helpers from `fraud_risk`; they do not reimplement core data or modeling logic.
 
@@ -136,4 +141,6 @@ Tests use synthetic CSVs / DataFrames and do not require the Kaggle dataset.
 
 **Task 3A — Simulator artifact and feature ablation audit.** Complete. Quantifies PaySim account-drain alignment and ablates explicit balance-drain features before treating near-perfect scores as deployment-ready.
 
-No FastAPI service, Docker image, CI/CD pipeline, AWS deployment, probability calibration, or production monitoring exists yet.
+**Task 4 — Probability calibration and inference contract.** Complete. **XGB Transformed** is the selected portfolio deployment model; scores are Platt-calibrated before serving; the public inference API contract is defined in `docs/inference_contract.md`. FastAPI implementation has not yet been completed.
+
+No FastAPI service, Docker image, CI/CD pipeline, AWS deployment, or production monitoring exists yet.
