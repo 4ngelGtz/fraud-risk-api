@@ -81,72 +81,94 @@ jobs:
           tags: fraud-risk-api:ci
 
       - name: Run container
-        run: docker run -d --name fraud-risk-api-ci -p 8000:8000 fraud-risk-api:ci
-
-      - name: Health wait and HTTP smoke assertions
         run: |
-          python <<'PY'
-          import json
-          import sys
-          import time
-          import urllib.error
-          import urllib.request
+          set -euo pipefail
+          docker run -d --name fraud-risk-api-ci -p 8000:8000 fraud-risk-api:ci
+          # Confirm the container did not exit immediately after start.
+          sleep 1
+          if [ "$(docker inspect -f '{{.State.Running}}' fraud-risk-api-ci)" != "true" ]; then
+            echo "ERROR: container fraud-risk-api-ci is not running after docker run" >&2
+            docker ps -a || true
+            docker inspect fraud-risk-api-ci || true
+            docker logs fraud-risk-api-ci || true
+            exit 1
+          fi
+          echo "container running"
 
-          health_url = "http://127.0.0.1:8000/health"
-          deadline = time.time() + 60
-          last_error = None
-          while time.time() < deadline:
-              try:
-                  with urllib.request.urlopen(health_url, timeout=2) as resp:
-                      if resp.status == 200:
-                          payload = json.loads(resp.read().decode())
-                          if payload.get("status") == "ok" and payload.get("model_loaded") is True:
-                              print("health ok:", payload)
-                              break
-                          last_error = f"unexpected health payload: {payload}"
-                      else:
-                          last_error = f"health HTTP {resp.status}"
-              except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-                  last_error = str(exc)
-              time.sleep(2)
-          else:
-              print("ERROR: /health never became ready:", last_error, file=sys.stderr)
-              sys.exit(1)
+      - name: Wait for Docker health
+        run: |
+          set -euo pipefail
+          # HEALTHCHECK interval is 30s; allow enough polls for starting -> healthy.
+          max_attempts=60
+          for attempt in $(seq 1 "${max_attempts}"); do
+            if [ "$(docker inspect -f '{{.State.Running}}' fraud-risk-api-ci)" != "true" ]; then
+              echo "ERROR: container stopped/exited while waiting for healthy (attempt ${attempt})" >&2
+              echo "--- docker ps -a ---"
+              docker ps -a || true
+              echo "--- health status ---"
+              docker inspect --format='{{.State.Health.Status}}' fraud-risk-api-ci || true
+              echo "--- docker inspect ---"
+              docker inspect fraud-risk-api-ci || true
+              echo "--- docker logs ---"
+              docker logs fraud-risk-api-ci || true
+              exit 1
+            fi
 
-          with urllib.request.urlopen("http://127.0.0.1:8000/model/info", timeout=5) as resp:
-              assert resp.status == 200
-              info = json.loads(resp.read().decode())
-          print("model/info:", info)
-          assert info["model_version"] == "ci-smoke-v1", info
+            health_status="$(docker inspect --format='{{.State.Health.Status}}' fraud-risk-api-ci)"
+            echo "health attempt ${attempt}/${max_attempts}: ${health_status}"
+            case "${health_status}" in
+              healthy)
+                echo "Docker health status is healthy"
+                exit 0
+                ;;
+              unhealthy)
+                echo "ERROR: Docker health status is unhealthy" >&2
+                echo "--- docker ps -a ---"
+                docker ps -a || true
+                echo "--- health status ---"
+                echo "${health_status}"
+                echo "--- docker inspect ---"
+                docker inspect fraud-risk-api-ci || true
+                echo "--- docker logs ---"
+                docker logs fraud-risk-api-ci || true
+                exit 1
+                ;;
+              starting|"")
+                sleep 1
+                ;;
+              *)
+                echo "WARNING: unexpected health status '${health_status}'; continuing to poll" >&2
+                sleep 1
+                ;;
+            esac
+          done
 
-          body = json.dumps(
-              {
-                  "transaction_type": "TRANSFER",
-                  "amount": 1000.0,
-                  "origin_balance": 5000.0,
-              }
-          ).encode()
-          req = urllib.request.Request(
-              "http://127.0.0.1:8000/predict",
-              data=body,
-              headers={"Content-Type": "application/json"},
-              method="POST",
-          )
-          with urllib.request.urlopen(req, timeout=10) as resp:
-              assert resp.status == 200
-              pred = json.loads(resp.read().decode())
-          print("predict:", pred)
-          assert "fraud_probability" in pred
-          proba = float(pred["fraud_probability"])
-          assert 0.0 <= proba <= 1.0
-          assert pred["decision"] in {"pass", "review"}
-          assert "threshold" in pred
-          assert pred["model_version"] == "ci-smoke-v1"
-          print("docker-smoke assertions passed")
-          PY
+          echo "ERROR: timed out waiting for Docker healthy after ${max_attempts}s" >&2
+          echo "--- docker ps -a ---"
+          docker ps -a || true
+          echo "--- health status ---"
+          docker inspect --format='{{.State.Health.Status}}' fraud-risk-api-ci || true
+          echo "--- docker inspect ---"
+          docker inspect fraud-risk-api-ci || true
+          echo "--- docker logs ---"
+          docker logs fraud-risk-api-ci || true
+          exit 1
 
-      - name: Container logs and cleanup
+      - name: HTTP smoke assertions
+        run: python scripts/ci_http_smoke.py --base-url http://127.0.0.1:8000
+
+      - name: Container diagnostics and cleanup
         if: always()
         run: |
-          docker logs fraud-risk-api-ci || true
+          set +e
+          echo "--- docker ps -a ---"
+          docker ps -a
+          echo "--- health status ---"
+          docker inspect --format='{{.State.Health.Status}}' fraud-risk-api-ci
+          echo "--- docker inspect ---"
+          docker inspect fraud-risk-api-ci
+          echo "--- docker logs ---"
+          docker logs fraud-risk-api-ci
           docker rm -f fraud-risk-api-ci || true
+          # Diagnostics must not mask the original failing step.
+          exit 0

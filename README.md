@@ -87,7 +87,8 @@ fraud-risk-api/
 │   ├── 03a_simulator_artifact_audit.ipynb
 │   └── 04_probability_calibration.ipynb
 ├── scripts/
-│   └── create_ci_smoke_artifact.py
+│   ├── create_ci_smoke_artifact.py
+│   └── ci_http_smoke.py
 ├── src/
 │   └── fraud_risk/
 │       ├── __init__.py
@@ -252,7 +253,7 @@ docker stop fraud-risk-api
 GitHub Actions (`.github/workflows/ci.yml`) runs on pull requests, pushes to `main`, and manual workflow dispatch.
 
 1. **python-quality** — `ruff check .` then `pytest` on Python 3.13.
-2. **docker-smoke** — after quality passes, builds the Docker image and hits `/health`, `/model/info`, and one `/predict`.
+2. **docker-smoke** — after quality passes, builds the Docker image with a synthetic `ci-smoke-v1` artifact, waits until Docker reports the container `healthy`, then runs `scripts/ci_http_smoke.py` against `/health`, `/model/info`, and one `/predict` (bounded retries for transient transport errors only).
 
 CI does **not** use PaySim or the real portfolio binary. It generates a synthetic compatible package via `scripts/create_ci_smoke_artifact.py` (`model_version = ci-smoke-v1`) only to exercise the serving path. CI never evaluates model performance.
 
@@ -283,6 +284,6 @@ Tests use synthetic CSVs / DataFrames (and a fake predictor for the API) and do 
 
 **Task 7 — Dockerize the Fraud API.** Complete. A two-stage `Dockerfile` packages the runtime dependencies and frozen `xgb-transformed-v1` artifact into a non-root Linux image that serves the existing FastAPI app on port 8000.
 
-**Task 8 — GitHub Actions Continuous Integration.** Complete. CI runs lint/tests, then a Docker serving smoke test using a synthetic `ci-smoke-v1` artifact (PaySim and the real model binary stay out of Git and out of CI).
+**Task 8 — GitHub Actions Continuous Integration.** Complete. CI runs lint/tests, then a Docker serving smoke test using a synthetic `ci-smoke-v1` artifact: wait for Docker health, then HTTP contract checks via `scripts/ci_http_smoke.py` (PaySim and the real model binary stay out of Git and out of CI).
 
 No AWS deployment, authentication, or production monitoring exists yet.
