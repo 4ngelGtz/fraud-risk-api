@@ -10,9 +10,8 @@ subset of training data only.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
@@ -21,8 +20,17 @@ from sklearn.pipeline import Pipeline
 
 from fraud_risk.modeling import RANDOM_STATE
 
+if TYPE_CHECKING:
+    import matplotlib.pyplot as plt
+
 # Stable identifier for the calibrated XGB Transformed deployment package.
 DEPLOYMENT_MODEL_VERSION: str = "xgb-transformed-v1"
+
+# Task 4 validation-selected calibrated operating threshold (frozen; do not reselect).
+FROZEN_OPERATING_THRESHOLD: float = 0.044
+
+# Human-readable prediction-moment statement (matches docs/feature_contract.md).
+PREDICTION_MOMENT: str = "immediately before transaction authorization"
 
 
 def predict_raw_margin(model: Pipeline, X: pd.DataFrame) -> np.ndarray:
@@ -226,6 +234,8 @@ def plot_reliability(
     ax: plt.Axes | None = None,
 ) -> tuple[plt.Axes, pd.DataFrame]:
     """Plot a reliability diagram with the compact calibration table overlaid as points."""
+    import matplotlib.pyplot as plt
+
     table = reliability_table(y_true, y_proba, n_bins=n_bins, strategy=strategy)
     created_fig = ax is None
     if ax is None:

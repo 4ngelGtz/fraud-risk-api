@@ -73,6 +73,8 @@ fraud-risk-api/
 ├── data/
 │   ├── README.md
 │   └── raw/                 # place PaySim CSV here (not in Git)
+├── artifacts/
+│   └── README.md            # generated model binaries are local-only
 ├── notebooks/
 │   ├── 01_data_audit.ipynb
 │   ├── 02_logistic_baseline.ipynb
@@ -87,13 +89,16 @@ fraud-risk-api/
 │       ├── dataset.py
 │       ├── diagnostics.py
 │       ├── features.py
-│       └── modeling.py
+│       ├── inference.py
+│       ├── modeling.py
+│       └── train_final.py
 ├── tests/
 │   ├── test_calibration.py
 │   ├── test_data.py
 │   ├── test_dataset.py
 │   ├── test_diagnostics.py
-│   └── test_features.py
+│   ├── test_features.py
+│   └── test_inference.py
 └── docs/
     ├── feature_contract.md
     └── inference_contract.md
@@ -122,6 +127,34 @@ pip install -e ".[dev]"
 
 Notebooks import reusable helpers from `fraud_risk`; they do not reimplement core data or modeling logic.
 
+## Frozen Model Artifact
+
+`xgb-transformed-v1` is the frozen portfolio deployment model (XGB Transformed + Platt calibration + threshold `0.044`). Generated binary artifacts are **not** committed to Git; rebuild them locally.
+
+### Generate the local artifact
+
+Requires the PaySim CSV under `data/raw/`:
+
+```bash
+python -m fraud_risk.train_final
+```
+
+Writes `artifacts/xgb-transformed-v1/{model.joblib,calibrator.joblib,metadata.json}`.
+
+### Run a local prediction
+
+```bash
+python -m fraud_risk.inference \
+  --artifact-dir artifacts/xgb-transformed-v1 \
+  --transaction-type TRANSFER \
+  --amount 8500 \
+  --origin-balance 9000
+```
+
+Output is compact JSON matching `docs/inference_contract.md` (`fraud_probability`, `decision`, `threshold`, `model_version`). Scoring does not load the PaySim dataset.
+
+FastAPI is the next serving layer and is **not** implemented yet.
+
 ## Tests
 
 ```bash
@@ -141,6 +174,8 @@ Tests use synthetic CSVs / DataFrames and do not require the Kaggle dataset.
 
 **Task 3A — Simulator artifact and feature ablation audit.** Complete. Quantifies PaySim account-drain alignment and ablates explicit balance-drain features before treating near-perfect scores as deployment-ready.
 
-**Task 4 — Probability calibration and inference contract.** Complete. **XGB Transformed** is the selected portfolio deployment model; scores are Platt-calibrated before serving; the public inference API contract is defined in `docs/inference_contract.md`. FastAPI implementation has not yet been completed.
+**Task 4 — Probability calibration and inference contract.** Complete. **XGB Transformed** is the selected portfolio deployment model; scores are Platt-calibrated before serving; the public inference API contract is defined in `docs/inference_contract.md`.
+
+**Task 5 — Frozen model artifact and local inference pipeline.** Complete. Reproducible artifact generation (`python -m fraud_risk.train_final`) and local scoring (`FraudPredictor` / `python -m fraud_risk.inference`) are available for `xgb-transformed-v1`. Binary artifacts stay local (not in Git).
 
 No FastAPI service, Docker image, CI/CD pipeline, AWS deployment, or production monitoring exists yet.

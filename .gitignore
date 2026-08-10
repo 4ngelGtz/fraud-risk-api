@@ -28,3 +28,7 @@ htmlcov/
 # Data: keep directory structure, exclude raw CSV payloads
 data/raw/*
 !data/raw/.gitkeep
+
+# Artifacts: keep README, exclude generated model outputs
+artifacts/**
+!artifacts/README.md
