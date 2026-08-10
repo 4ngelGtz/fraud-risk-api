@@ -84,6 +84,10 @@ fraud-risk-api/
 ├── src/
 │   └── fraud_risk/
 │       ├── __init__.py
+│       ├── api/
+│       │   ├── __init__.py
+│       │   ├── main.py
+│       │   └── schemas.py
 │       ├── calibration.py
 │       ├── data.py
 │       ├── dataset.py
@@ -93,6 +97,7 @@ fraud-risk-api/
 │       ├── modeling.py
 │       └── train_final.py
 ├── tests/
+│   ├── test_api.py
 │   ├── test_calibration.py
 │   ├── test_data.py
 │   ├── test_dataset.py
@@ -153,7 +158,43 @@ python -m fraud_risk.inference \
 
 Output is compact JSON matching `docs/inference_contract.md` (`fraud_probability`, `decision`, `threshold`, `model_version`). Scoring does not load the PaySim dataset.
 
-FastAPI is the next serving layer and is **not** implemented yet.
+## Local FastAPI Service
+
+Task 6 exposes the frozen `FraudPredictor` through a minimal local FastAPI app (`GET /health`, `GET /model/info`, `POST /predict`). The API is a serving layer only; it does not reimplement feature engineering, calibration, or threshold logic. Request/response fields follow [`docs/inference_contract.md`](docs/inference_contract.md).
+
+### Generate the artifact if missing
+
+```bash
+python -m fraud_risk.train_final
+```
+
+### Start the API
+
+```bash
+FRAUD_MODEL_DIR=artifacts/xgb-transformed-v1 uvicorn fraud_risk.api.main:app --reload
+```
+
+If `FRAUD_MODEL_DIR` is unset, the app defaults to `artifacts/xgb-transformed-v1`.
+
+Interactive OpenAPI docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+### Example prediction
+
+```bash
+curl -s http://127.0.0.1:8000/predict \
+  -H 'Content-Type: application/json' \
+  -d '{"transaction_type":"TRANSFER","amount":8500.0,"origin_balance":9000.0}'
+```
+
+### Manual integration smoke test
+
+With the real local artifact (not required by the automated test suite):
+
+1. `python -m fraud_risk.train_final` (if needed)
+2. Start uvicorn as above
+3. `GET /health` and `GET /model/info`
+4. `POST /predict` for one `TRANSFER` and one `CASH_OUT`
+5. Confirm `/docs` loads
 
 ## Tests
 
@@ -162,7 +203,7 @@ pytest
 ruff check .
 ```
 
-Tests use synthetic CSVs / DataFrames and do not require the Kaggle dataset.
+Tests use synthetic CSVs / DataFrames (and a fake predictor for the API) and do not require the Kaggle dataset or the real XGBoost artifact.
 
 ## Current Status
 
@@ -178,4 +219,6 @@ Tests use synthetic CSVs / DataFrames and do not require the Kaggle dataset.
 
 **Task 5 — Frozen model artifact and local inference pipeline.** Complete. Reproducible artifact generation (`python -m fraud_risk.train_final`) and local scoring (`FraudPredictor` / `python -m fraud_risk.inference`) are available for `xgb-transformed-v1`. Binary artifacts stay local (not in Git).
 
-No FastAPI service, Docker image, CI/CD pipeline, AWS deployment, or production monitoring exists yet.
+**Task 6 — FastAPI local model service.** Complete. Minimal local API (`/health`, `/model/info`, `/predict`) loads `FraudPredictor` once at startup and reuses it across requests.
+
+No Docker image, CI/CD pipeline, AWS deployment, authentication, or production monitoring exists yet.

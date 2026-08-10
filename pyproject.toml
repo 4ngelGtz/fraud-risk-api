@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "fraud-risk-api"
 version = "0.1.0"
-description = "End-to-end fraud risk scoring service (data audit through frozen local inference)."
+description = "End-to-end fraud risk scoring service (frozen local inference + FastAPI serving)."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -17,12 +17,15 @@ dependencies = [
     "joblib",
     "jupyter",
     "ipykernel",
+    "fastapi",
+    "uvicorn",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
     "ruff",
+    "httpx",
 ]
 
 [tool.setuptools.packages.find]
