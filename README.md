@@ -174,13 +174,13 @@ pip install -e ".[dev]"
    - `notebooks/02_logistic_baseline.ipynb` — leakage-safe logistic baseline
    - `notebooks/03_feature_engineering_xgboost.ipynb` — engineered features + XGBoost comparison
    - `notebooks/03a_simulator_artifact_audit.ipynb` — PaySim drain-pattern audit + feature ablation
-   - `notebooks/04_probability_calibration.ipynb` — Platt calibration + inference contract
+   - `notebooks/04_probability_calibration.ipynb` — trains `xgb-transformed-v1` (XGB Transformed + Platt calibration) and documents the inference contract
 
 Notebooks import reusable helpers from `fraud_risk`; they do not reimplement core data or modeling logic.
 
 ## Frozen Model Artifact
 
-`xgb-transformed-v1` is the frozen portfolio deployment model (XGB Transformed + Platt calibration + threshold `0.044`). Generated binary artifacts are **not** committed to Git; rebuild them locally.
+`xgb-transformed-v1` is the frozen portfolio deployment model (XGB Transformed + Platt calibration + threshold `0.044`). It is trained and calibrated in `notebooks/04_probability_calibration.ipynb` (the XGB Transformed feature set is the Task 3A deployment choice, not Model C from notebook 03). Generated binary artifacts are **not** committed to Git; rebuild them locally.
 
 ### Generate the local artifact
 
