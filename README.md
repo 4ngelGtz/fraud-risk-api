@@ -2,6 +2,25 @@
 
 End-to-end machine learning project demonstrating how to build, validate, deploy, and monitor a fraud risk scoring service.
 
+## Contents
+
+- [Business Problem](#business-problem)
+- [Dataset](#dataset)
+- [Prediction Moment](#prediction-moment)
+- [Modeling Scope](#modeling-scope)
+- [Leakage-Safe Logistic Baseline](#leakage-safe-logistic-baseline)
+- [Feature Engineering and Model Comparison](#feature-engineering-and-model-comparison)
+- [Project Principles](#project-principles)
+- [Repository Structure](#repository-structure)
+- [Local Setup](#local-setup)
+- [Running Notebooks](#running-notebooks)
+- [Frozen Model Artifact](#frozen-model-artifact)
+- [Local FastAPI Service](#local-fastapi-service)
+- [Docker](#docker)
+- [Continuous Integration](#continuous-integration)
+- [Tests](#tests)
+- [Current Status](#current-status)
+
 ## Business Problem
 
 Financial institutions must decide whether to authorize a payment in near real time. This project will train a model that estimates the probability that a transaction is fraudulent **using only information available immediately before transaction authorization**. Model scores will inform risk decisions; they will not replace explicit business rules or human review.
@@ -18,25 +37,30 @@ Predictors may only use information that would actually be available at that mom
 
 See `docs/feature_contract.md` for the full V1 modeling contract.
 
-## V1 Modeling Scope
+## Modeling Scope
 
-**V1 modeling scope: `TRANSFER` and `CASH_OUT` transactions only.**
+**Modeling scope: `TRANSFER` and `CASH_OUT` transactions only.**
 
-The PaySim audit found all labeled fraud in those two types (`PAYMENT`, `CASH_IN`, and `DEBIT` had zero positive fraud examples in this dataset). Restricting V1 to `TRANSFER` and `CASH_OUT` avoids an artificially easy classification problem driven by types with no fraud labels.
+The PaySim audit found all labeled fraud in those two types (`PAYMENT`, `CASH_IN`, and `DEBIT` had zero positive fraud examples in this dataset). Restricting to `TRANSFER` and `CASH_OUT` avoids an artificially easy classification problem driven by types with no fraud labels.
 
 This is a **property of the PaySim simulation and a project modeling-scope decision**. It does **not** mean those other types can never be fraudulent in real financial systems.
 
-## Baseline Modeling Approach
+## Leakage-Safe Logistic Baseline
 
-Task 2 builds a deliberately conservative leakage-safe baseline (Model A):
+**Goal:** Establish a simple, trustworthy reference model before adding engineered features or stronger algorithms.
 
+Builds the first fraud classifier using only information available at authorization time, trains and evaluates it with chronological splits, and freezes that setup as **Model A** for later comparison.
+
+**Model A (the baseline):**
+- **Algorithm:** scikit-learn Logistic Regression (one-hot encoding, numeric standardization, balanced class weights)
 - **Predictors:** `type`, `amount`, `oldbalanceOrg` only
 - **Target:** `isFraud`
-- **Temporal key:** `step` for chronological train / validation / test splits (~70% / 15% / 15% of rows via cumulative step counts; not used as a predictor)
-- **Model:** scikit-learn Logistic Regression with one-hot encoding, numeric standardization, and balanced class weights
-- **Evaluation:** PR-AUC / Average Precision, ROC-AUC, precision, recall, F1; provisional threshold chosen on validation only
+- **Splits:** chronological train / validation / test by `step` (~70% / 15% / 15% of rows via cumulative step counts; `step` is not a predictor)
+- **Metrics:** PR-AUC / Average Precision, ROC-AUC, precision, recall, F1; provisional threshold chosen on validation only
 
-IDs, post-transaction balances, destination pre-balance, and `isFlaggedFraud` are excluded.
+**Excluded (leakage / out of scope):** IDs, post-transaction balances, destination pre-balance, and `isFlaggedFraud`.
+
+Model A is intentionally minimal. Later tasks keep it frozen and measure whether richer features or XGBoost reduce false positives without losing roughly 80% fraud recall.
 
 ## Feature Engineering and Model Comparison
 
@@ -44,7 +68,7 @@ Task 3 asks whether false positives can be reduced while holding approximately *
 
 | Model | Description |
 | --- | --- |
-| **A** | Frozen Task 2 Logistic Regression baseline (`type`, `amount`, `oldbalanceOrg`) |
+| **A** | Task 2 reference: Logistic Regression on `type`, `amount`, `oldbalanceOrg` only (frozen; no new features) |
 | **B** | Logistic Regression on baseline features plus small leakage-safe engineered features (`log_amount`, `log_origin_balance`, `amount_to_balance_ratio`, `origin_balance_zero`, `amount_exceeds_balance`) |
 | **C** | XGBoost on the same engineered feature set, with `scale_pos_weight` from the **train** split only |
 
@@ -266,11 +290,11 @@ ruff check .
 
 Tests use synthetic CSVs / DataFrames (and a fake predictor for the API) and do not require the Kaggle dataset or the real XGBoost artifact.
 
-## Current Status
+## Current Status (Tasks):
 
 **Task 1 — Data audit and feature contract.** Complete.
 
-**Task 2 — Modeling dataset and Logistic Regression baseline.** Complete. Model A remains the fixed baseline.
+**Task 2 — Modeling dataset and Logistic Regression baseline.** Complete. Produced **Model A** (leakage-safe Logistic Regression on `type`, `amount`, `oldbalanceOrg`), which stays frozen as the comparison baseline for Task 3+.
 
 **Task 3 — Leakage-safe feature engineering and XGBoost comparison.** Complete. Engineered Logistic Regression (Model B) and XGBoost (Model C) are compared against Model A on false positives at approximately 80% recall.
 
