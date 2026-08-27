@@ -29,6 +29,18 @@ Financial institutions must decide whether to authorize a payment in near real t
 
 The project uses the [PaySim](https://www.kaggle.com/datasets/ealaxi/paysim1) synthetic mobile-money fraud dataset. The raw CSV is **not committed** to this repository. Download it manually and place it under `data/raw/` (see `data/README.md`).
 
+### How to download the data?
+
+Automatic Kaggle auth/download is **not** built into this repo. As an optional local shortcut, you can use the [Kaggle CLI](https://www.kaggle.com/docs/api) after configuring credentials (`kaggle.json` in `~/.kaggle/`, or `KAGGLE_USERNAME` / `KAGGLE_KEY`):
+
+```bash
+# one-time: put kaggle.json in ~/.kaggle/ (or set KAGGLE_USERNAME / KAGGLE_KEY)
+pip install kaggle
+kaggle datasets download -d ealaxi/paysim1 -p data/raw/ --unzip
+```
+
+Keep exactly one `.csv` under `data/raw/` afterward.
+
 ## Prediction Moment
 
 **Prediction moment: immediately before transaction authorization.**
@@ -194,7 +206,37 @@ Output is compact JSON matching `docs/inference_contract.md` (`fraud_probability
 
 ## Local FastAPI Service
 
-Task 6 exposes the frozen `FraudPredictor` through a minimal local FastAPI app (`GET /health`, `GET /model/info`, `POST /predict`). The API is a serving layer only; it does not reimplement feature engineering, calibration, or threshold logic. Request/response fields follow [`docs/inference_contract.md`](docs/inference_contract.md).
+### What this API does
+
+The FastAPI service scores a single payment **immediately before authorization** and returns a calibrated fraud probability plus an illustrative review decision. Callers send only business fields (`transaction_type`, `amount`, `origin_balance`); the service owns feature engineering, Platt calibration, and the frozen threshold. It does **not** authorize payments by itself—scores inform risk review alongside rules and human oversight.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /health` | Liveness check; reports whether the model artifact is loaded |
+| `GET /model/info` | Model version, frozen threshold, allowed types, prediction moment |
+| `POST /predict` | Score one `TRANSFER` or `CASH_OUT` transaction |
+| `GET /docs` | Interactive OpenAPI / Swagger UI |
+
+**Request** (`POST /predict`):
+
+```json
+{"transaction_type": "TRANSFER", "amount": 8500.0, "origin_balance": 9000.0}
+```
+
+**Response:**
+
+```json
+{
+  "fraud_probability": 0.35,
+  "decision": "review",
+  "threshold": 0.044,
+  "model_version": "xgb-transformed-v1"
+}
+```
+
+`decision` is `review` when `fraud_probability >= threshold`, otherwise `pass`. Only `TRANSFER` and `CASH_OUT` are in scope; other types are rejected. Full contract: [`docs/inference_contract.md`](docs/inference_contract.md).
+
+The API is a thin serving layer over `FraudPredictor`. It does not reimplement feature engineering, calibration, or threshold logic.
 
 ### Generate the artifact if missing
 
